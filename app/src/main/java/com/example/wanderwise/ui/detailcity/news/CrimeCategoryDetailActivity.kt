@@ -32,23 +32,28 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.getValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 class CrimeCategoryDetailActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCrimeCategoryDetailBinding
 
-    private val homeViewModel by viewModels<HomeViewModel> {
-        ViewModelFactory.getInstance(this)
-    }
-
+    private lateinit var homeViewModel:HomeViewModel
     private lateinit var crimeNewsAdapter: CrimeCategoryNewsAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityCrimeCategoryDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        lifecycleScope.launch{
+            homeViewModel = withContext(Dispatchers.IO){
+                ViewModelFactory.getInstance(this@CrimeCategoryDetailActivity).create(HomeViewModel::class.java)
+            }
+        }
 
         val cityKey = intent.getStringExtra(CrimeCategoryDetailActivity.CITY)
 

@@ -31,8 +31,12 @@ import com.example.wanderwise.ui.profile.smallmenu.SendFeedbackFragment
 import com.example.wanderwise.ui.profile.smallmenu.SettingsChangeFragment
 import com.example.wanderwise.databinding.FragmentProfileBinding
 import com.example.wanderwise.ui.ViewModelFactory
+import com.example.wanderwise.ui.post.GetPostViewModel
 import com.example.wanderwise.ui.post.addpost.AddPostViewModel
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.internal.notify
 
 
@@ -41,9 +45,7 @@ class ProfileFragment : Fragment() {
     private var _binding: FragmentProfileBinding? = null
     private val binding get() = _binding!!
 
-    private val profileViewModel by viewModels<ProfileViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var profileViewModel: ProfileViewModel
 
     private var imagePickUri: Uri? = null
 
@@ -96,6 +98,44 @@ class ProfileFragment : Fragment() {
         _binding = FragmentProfileBinding.inflate(inflater, container, false)
         val view = binding.root
 
+        lifecycleScope.launch{
+            profileViewModel = withContext(Dispatchers.IO){
+                ViewModelFactory.getInstance(requireContext()).create(ProfileViewModel::class.java)
+            }
+
+            profileViewModel.getPhoto().observe(viewLifecycleOwner) {
+                Glide.with(requireContext())
+                    .load(it.body.photo)
+                    .into(binding.profileImage)
+            }
+
+            profileViewModel.getUserProfile().observe(viewLifecycleOwner) {
+                binding.usernameProfile.text = it.body.name
+                binding.emailUserProfile.text = it.body.email
+            }
+
+            profileViewModel.isLoading.observe(viewLifecycleOwner) {
+                isLoading(it)
+            }
+
+            profileViewModel.snackbar.observe(viewLifecycleOwner) {
+                it.getContentIfNotHandled()?.let { SnackBarText ->
+                    Snackbar.make(
+                        view,
+                        SnackBarText,
+                        Snackbar.LENGTH_SHORT
+                    ).show()
+                }
+            }
+
+            binding.logOut.setOnClickListener {
+                profileViewModel.logoutUser()
+                val intentLogOut = Intent(activity, LoginScreenActivity::class.java)
+                intentLogOut.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK
+                startActivity(intentLogOut)
+            }
+        }
+
         binding.usernameEdit.setOnClickListener {
             val dialogFragment = NameChangeFragment()
             dialogFragment.show(parentFragmentManager, "NameChangeDialog")
@@ -121,41 +161,11 @@ class ProfileFragment : Fragment() {
             dialogFragment.show(parentFragmentManager, "AboutUsDialog")
         }
 
-        binding.logOut.setOnClickListener {
-            profileViewModel.logoutUser()
-            val intentLogOut = Intent(activity, LoginScreenActivity::class.java)
-            intentLogOut.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(intentLogOut)
-        }
-
         binding.profileImage.setOnClickListener {
             startGallery()
         }
 
-        profileViewModel.isLoading.observe(viewLifecycleOwner) {
-            isLoading(it)
-        }
 
-        profileViewModel.snackbar.observe(viewLifecycleOwner) {
-            it.getContentIfNotHandled()?.let { SnackBarText ->
-                Snackbar.make(
-                    view,
-                    SnackBarText,
-                    Snackbar.LENGTH_SHORT
-                ).show()
-            }
-        }
-
-        profileViewModel.getPhoto().observe(viewLifecycleOwner) {
-            Glide.with(requireContext())
-                .load(it.body.photo)
-                .into(binding.profileImage)
-        }
-
-        profileViewModel.getUserProfile().observe(viewLifecycleOwner) {
-            binding.usernameProfile.text = it.body.name
-            binding.emailUserProfile.text = it.body.email
-        }
 
         return view
     }

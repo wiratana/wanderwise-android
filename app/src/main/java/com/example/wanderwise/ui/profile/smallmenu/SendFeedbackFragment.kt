@@ -15,17 +15,18 @@ import com.example.wanderwise.databinding.FragmentProfileBinding
 import com.example.wanderwise.databinding.FragmentSendFeedbackBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.home.HomeViewModel
+import com.example.wanderwise.ui.profile.ProfileViewModel
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SendFeedbackFragment : DialogFragment() {
     private var _binding: FragmentSendFeedbackBinding? = null
     private val binding get() = _binding!!
 
-    private val homeViewModel by viewModels<HomeViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var homeViewModel: HomeViewModel
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -33,6 +34,11 @@ class SendFeedbackFragment : DialogFragment() {
         _binding = FragmentSendFeedbackBinding.inflate(inflater, container, false)
         val view = binding.root
 
+        lifecycleScope.launch {
+            homeViewModel = withContext(Dispatchers.IO) {
+                ViewModelFactory.getInstance(requireContext()).create(HomeViewModel::class.java)
+            }
+        }
 
         binding.feedbackEdit.text
         binding.cancelButton.setOnClickListener{

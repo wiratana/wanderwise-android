@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.viewModels
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.wanderwise.R
 import com.example.wanderwise.data.database.City
@@ -21,6 +22,8 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.getValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class NotificationActivity : AppCompatActivity() {
     private lateinit var binding: ActivityNotificationBinding
@@ -32,37 +35,38 @@ class NotificationActivity : AppCompatActivity() {
         supportActionBar?.setBackgroundDrawable(ColorDrawable(Color.parseColor("#FFFFFF")))
         supportActionBar?.title = "Notification"
 
-        val cityKey = intent.getStringExtra("cityKey")
-
-        val db = FirebaseDatabase.getInstance("https://wanderwise-application-default-rtdb.asia-southeast1.firebasedatabase.app")
-        val currentTime = System.currentTimeMillis()
-        val oneDayAgo = currentTime - (24 * 60 * 60 * 1000)
-        val refNotification = db.getReference("notifications/${cityKey}").orderByChild("timestamp").startAt(oneDayAgo.toString().toDouble())
-        val notificationListener = object : ValueEventListener {
-            override fun onDataChange(dataSnapshot: DataSnapshot) {
-                val notifications = ArrayList<Notification>()
-                dataSnapshot.children.map {
-                    notifications.add(
-                        Notification(
-                            key = it.key,
-                            subject = it.getValue<Notification>()!!.subject,
-                            message = it.getValue<Notification>()!!.message,
-                            level = it.getValue<Notification>()!!.level,
-                            timestamp = it.getValue<Notification>()!!.timestamp
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cityKey = intent.getStringExtra("cityKey")
+            val db = FirebaseDatabase.getInstance("https://wanderwise-application-default-rtdb.asia-southeast1.firebasedatabase.app")
+            val currentTime = System.currentTimeMillis()
+            val oneDayAgo = currentTime - (24 * 60 * 60 * 1000)
+            val refNotification = db.getReference("notifications/${cityKey}").orderByChild("timestamp").startAt(oneDayAgo.toString().toDouble())
+            val notificationListener = object : ValueEventListener {
+                override fun onDataChange(dataSnapshot: DataSnapshot) {
+                    val notifications = ArrayList<Notification>()
+                    dataSnapshot.children.map {
+                        notifications.add(
+                            Notification(
+                                key = it.key,
+                                subject = it.getValue<Notification>()!!.subject,
+                                message = it.getValue<Notification>()!!.message,
+                                level = it.getValue<Notification>()!!.level,
+                                timestamp = it.getValue<Notification>()!!.timestamp
+                            )
                         )
-                    )
+                    }
+
+                    val notificationAdapter = NotificationAdapter(notifications)
+                    binding.rvNotification.layoutManager = LinearLayoutManager(this@NotificationActivity)
+                    binding.rvNotification.setHasFixedSize(true)
+                    binding.rvNotification.adapter = notificationAdapter
                 }
 
-                val notificationAdapter = NotificationAdapter(notifications)
-                binding.rvNotification.layoutManager = LinearLayoutManager(this@NotificationActivity)
-                binding.rvNotification.setHasFixedSize(true)
-                binding.rvNotification.adapter = notificationAdapter
+                override fun onCancelled(databaseError: DatabaseError) {
+                    Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
+                }
             }
-
-            override fun onCancelled(databaseError: DatabaseError) {
-                Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
-            }
+            refNotification.addValueEventListener(notificationListener)
         }
-        refNotification.addValueEventListener(notificationListener)
     }
 }

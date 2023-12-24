@@ -2,6 +2,7 @@ package com.example.wanderwise.ui
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
@@ -15,6 +16,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat.requestLocationUpdates
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
@@ -24,12 +26,21 @@ import com.example.wanderwise.data.preferences.UserModel
 import com.example.wanderwise.databinding.ActivityMainBinding
 import com.example.wanderwise.ui.home.HomeFragment
 import com.example.wanderwise.ui.profile.ProfileViewModel
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationAvailability
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.tasks.Tasks.await
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Locale
 
@@ -37,96 +48,104 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private val profileViewModel by viewModels<ProfileViewModel> {
-        ViewModelFactory.getInstance(this)
-    }
+    private lateinit var profileViewModel: ProfileViewModel
+    private val PLAY_SERVICES_RESOLUTION_REQUEST = 9000
 
     @SuppressLint("ResourceType")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        val navView: BottomNavigationView = binding.navView
+        lifecycleScope.launch(Dispatchers.IO){
+            profileViewModel = getViewModel()
 
-        val navController = findNavController(R.id.nav_host_fragment_activity_main)
-        val appBarConfiguration = AppBarConfiguration(
-            setOf(
-                R.id.homeFragment, R.id.postFragment, R.id.rankMapsFragment, R.id.profileFragment
-            )
-        )
-        setupActionBarWithNavController(navController, appBarConfiguration)
-        navView.setupWithNavController(navController)
+            fusedLocationClient = withContext(Dispatchers.IO){
+                LocationServices.getFusedLocationProviderClient(this@MainActivity)
+            }
 
-        navView.setOnNavigationItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.homeFragment -> {
-                    findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.homeFragment)
-                    true
+            withContext(Dispatchers.Main){
+                checkPlayServices()
+
+                if (ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        android.Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestLocationUpdates()
+                } else {
+                    ActivityCompat.requestPermissions(
+                        this@MainActivity,
+                        arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+                        LOCATION_PERMISSION_REQUEST_CODE
+                    )
                 }
-                R.id.rankMapsFragment -> {
-                    findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.rankMapsFragment)
-                    true
+            }
+
+            withContext(Dispatchers.Main){
+                binding = ActivityMainBinding.inflate(layoutInflater)
+                setContentView(binding.root)
+
+                val navView: BottomNavigationView = binding.navView
+
+                val navController = findNavController(R.id.nav_host_fragment_activity_main)
+                val appBarConfiguration = AppBarConfiguration(
+                    setOf(
+                        R.id.homeFragment, R.id.postFragment, R.id.rankMapsFragment, R.id.profileFragment
+                    )
+                )
+                setupActionBarWithNavController(navController, appBarConfiguration)
+                navView.setupWithNavController(navController)
+
+                navView.setOnNavigationItemSelectedListener { item ->
+                    when (item.itemId) {
+                        R.id.homeFragment -> {
+                            findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.homeFragment)
+                            true
+                        }
+                        R.id.rankMapsFragment -> {
+                            findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.rankMapsFragment)
+                            true
+                        }
+                        R.id.postFragment -> {
+                            findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.postFragment)
+                            true
+                        }
+                        R.id.profileFragment -> {
+                            findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.profileFragment)
+                            true
+                        }
+                        else -> false
+                    }
                 }
-                R.id.postFragment -> {
-                    findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.postFragment)
-                    true
-                }
-                R.id.profileFragment -> {
-                    findNavController(R.id.nav_host_fragment_activity_main).navigate(R.id.profileFragment)
-                    true
-                }
-                else -> false
             }
         }
-
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-
-        // Check for permission and request if not granted
-        if (ContextCompat.checkSelfPermission(
-                this,
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            Log.d("location-log", "permission granted")
-            requestLocationUpdates()
-        } else {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
-                LOCATION_PERMISSION_REQUEST_CODE
-            )
-        }
-
         supportActionBar?.hide()
     }
 
-    private fun requestLocationUpdates() {
+    private suspend fun requestLocationUpdates() {
         //Check if the necessary location permissions are granted
         if (ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+            ) == PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_COARSE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED
         ) {
-            Log.d("location-log", "Permission not granted")
-            return
+            fusedLocationClient.requestLocationUpdates(
+                getLocationRequest(),
+                locationCallback,
+                null
+            )
         }
-
-        //Request location updates
-        fusedLocationClient.requestLocationUpdates(
-            getLocationRequest(),
-            locationCallback,
-            null
-        )
     }
 
+    @Suppress("DEPRECATION")
     private fun getLocationRequest(): LocationRequest {
         var interval = 6000*5
+        var onlyOnce = false
         profileViewModel.getSessionUser().observe(this@MainActivity) {
-            if (it.userLocation.isEmpty()) {
+            if (it.userLocation.isEmpty() && !onlyOnce) {
+                onlyOnce = true
                 interval = 0
             }
         }
@@ -161,17 +180,21 @@ class MainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted, request location updates
-                requestLocationUpdates()
-            } else {
-                // Permission denied, handle accordingly
-                Log.d("location-log","Location permission denied")
+        lifecycleScope.launch {
+            if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted, request location updates
+                    Log.d("location-log", "permission granted")
+                    requestLocationUpdates()
+                } else {
+                    // Permission denied, handle accordingly
+                    Log.d("location-log","Location permission denied")
+                }
             }
         }
     }
 
+    @Suppress("DEPRECATION")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         super.onBackPressed()
@@ -182,37 +205,62 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getCityNameFromLatLng(latitude: Double, longitude: Double): String? {
-        val geocoder = Geocoder(this, Locale.getDefault())
-        try {
-            val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-            if (addresses?.isNotEmpty() == true) {
-                val cityName = addresses[0].subAdminArea.replace(Regex("(Kota|City|Kabupaten)"), "").replace(Regex("\\s+"), "")
-                Log.d("LocationCityName", "City Name: $cityName")
-
-                profileViewModel.getSessionUser().observe(this@MainActivity) { user ->
-                    profileViewModel.editUserModel(UserModel(
-                        name = user.name,
-                        token = user.token,
-                        email = user.email,
-                        uid = user.uid,
-                        userLocation = cityName,
-                        currentActivity = "profile",
-                        isLogin = true
-                    ))
-                }
-
-                //Store to DataStore : store the variable caled cityName to datastore
-            } else {
-                Log.d("Location", "No address found")
+    @Suppress("DEPRECATION")
+    private fun getCityNameFromLatLng(latitude: Double, longitude: Double) {
+        lifecycleScope.launch(Dispatchers.IO){
+            var current_user_location = ""
+            var onlyOnce = false
+            val addresses = async { Geocoder(this@MainActivity, Locale.getDefault()).getFromLocation(latitude, longitude, 1) }
+            val cityName = async {
+                addresses.await()?.get(0)?.subAdminArea?.replace(Regex("(Kota|City|Kabupaten)"), "")
+                    ?.replace(Regex("\\s+"), "") ?: ""
             }
-        } catch (e: IOException) {
-            Log.e("Location", "Error getting city name", e)
+
+            lifecycleScope.launch(Dispatchers.Main){
+                cityName.join()
+                profileViewModel.getSessionUser().observe(this@MainActivity) { user ->
+                    if (!onlyOnce){
+                        lifecycleScope.launch(Dispatchers.IO){
+                            profileViewModel.editUserModel(UserModel(
+                                name = user.name,
+                                token = user.token,
+                                email = user.email,
+                                uid = user.uid,
+                                userLocation = cityName.await(),
+                                currentActivity = "profile",
+                                isLogin = true
+                            )).also {
+                                current_user_location = user.userLocation
+                                onlyOnce = true
+                            }
+                        }
+                    }
+                }
+            }
         }
-        return null
+    }
+
+    suspend fun getViewModel(): ProfileViewModel {
+        return ViewModelFactory.getInstance(this@MainActivity).create(ProfileViewModel::class.java)
     }
 
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
+    }
+
+    private fun checkPlayServices() {
+        val apiAvailability = GoogleApiAvailability.getInstance()
+        val resultCode = apiAvailability.isGooglePlayServicesAvailable(this)
+
+        if (resultCode != ConnectionResult.SUCCESS) {
+            if (apiAvailability.isUserResolvableError(resultCode)) {
+                val errorDialog: Dialog = apiAvailability.getErrorDialog(
+                    this,
+                    resultCode,
+                    PLAY_SERVICES_RESOLUTION_REQUEST
+                )!!
+                errorDialog.show()
+            }
+        }
     }
 }

@@ -7,24 +7,33 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
 import com.example.wanderwise.R
 import com.example.wanderwise.databinding.ActivityRegisterBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.login.LoginScreenActivity
 import com.example.wanderwise.data.Result
 import com.example.wanderwise.ui.MainActivity
+import com.example.wanderwise.ui.home.HomeViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class RegisterActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityRegisterBinding
 
-    private val registViewModel by viewModels<RegisterViewModel> {
-        ViewModelFactory.getInstance(this)
-    }
+    private lateinit var registViewModel: RegisterViewModel
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityRegisterBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        lifecycleScope.launch {
+            registViewModel = withContext(Dispatchers.IO) {
+                ViewModelFactory.getInstance(this@RegisterActivity).create(RegisterViewModel::class.java)
+            }
+        }
 
         binding.registerButton.setOnClickListener {
             val intentRegister = Intent(this, LoginScreenActivity::class.java)

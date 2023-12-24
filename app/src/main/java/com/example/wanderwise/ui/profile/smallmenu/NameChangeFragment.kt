@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import com.example.wanderwise.R
 import com.example.wanderwise.data.Result
 import com.example.wanderwise.data.preferences.UserModel
@@ -14,12 +15,13 @@ import com.example.wanderwise.databinding.FragmentNameChangeBinding
 import com.example.wanderwise.databinding.FragmentRankBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.profile.ProfileViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class NameChangeFragment : DialogFragment() {
 
-    private val profileViewModel by viewModels<ProfileViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var profileViewModel: ProfileViewModel
 
     private var _binding: FragmentNameChangeBinding? = null
     private val binding get() = _binding!!
@@ -30,6 +32,12 @@ class NameChangeFragment : DialogFragment() {
     ): View {
         _binding = FragmentNameChangeBinding.inflate(inflater, container, false)
         val view = binding.root
+
+        lifecycleScope.launch {
+            profileViewModel = withContext(Dispatchers.IO) {
+                ViewModelFactory.getInstance(requireContext()).create(ProfileViewModel::class.java)
+            }
+        }
 
         binding.cancelButton.setOnClickListener {
             dismiss()

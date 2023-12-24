@@ -17,13 +17,13 @@ class ProfileViewModel (private val pRepository: PostRepository): ViewModel() {
         return pRepository.getSession().asLiveData()
     }
 
-    fun getUserProfile(): LiveData<UploadPhotoResponse> = pRepository.getProfileUser()
+    suspend fun getUserProfile(): LiveData<UploadPhotoResponse> = pRepository.getProfileUser()
 
     val snackbar: LiveData<Event<String>> = pRepository.snackBarText
 
     val isLoading: LiveData<Boolean> = pRepository.isLoading
 
-    fun getPhoto(): LiveData<UploadPhotoResponse> = pRepository.getImage()
+    suspend fun getPhoto(): LiveData<UploadPhotoResponse> = pRepository.getImage()
 
     fun uploadPhotoProfile(image: File) = pRepository.uploadPhotoUser(image)
 

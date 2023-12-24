@@ -152,7 +152,7 @@ class PostRepository private constructor
         }
     }
 
-    fun getImage(): LiveData<UploadPhotoResponse> {
+    suspend fun getImage(): LiveData<UploadPhotoResponse> {
         _isLoading.value = true
         val detail = MutableLiveData<UploadPhotoResponse>()
 
@@ -182,7 +182,7 @@ class PostRepository private constructor
         return detail
     }
 
-    fun getProfileUser(): LiveData<UploadPhotoResponse> {
+    suspend fun getProfileUser(): LiveData<UploadPhotoResponse> {
         _isLoading.value = true
         val detail = MutableLiveData<UploadPhotoResponse>()
 

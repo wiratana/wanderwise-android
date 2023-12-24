@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.wanderwise.R
@@ -57,7 +58,7 @@ class CityExploreAdapter(
         }
 
         holder.binding.loveIcon.setOnClickListener {
-            GlobalScope.launch(Dispatchers.Default) {
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
                 val clickedCity = homeViewModel.getClickedCity(city.key.toString())
                 if (clickedCity != null && clickedCity.key == city.key.toString()){
                     homeViewModel.delete(clickedCity.key.toString())
@@ -91,34 +92,42 @@ class CityExploreAdapter(
 
         @SuppressLint("SetTextI18n")
         fun bind(context: Context, score:Double, city: City, homeViewModel: HomeViewModel, cityFavorite: CityFavorite, viewLifecycleOwner: LifecycleOwner) {
-            GlobalScope.launch(Dispatchers.Default) {
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
                 val clickedCity = homeViewModel.getClickedCity(city.key.toString())
                 if (clickedCity != null && clickedCity.key == city.key.toString()) {
-                    binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_fill_icon))
+                    withContext(Dispatchers.Main){
+                        binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_fill_icon))
+                    }
                 } else {
-                    binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_outline_icon))
+                    withContext(Dispatchers.Main){
+                        binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_outline_icon))
+                    }
                 }
             }
 
-            Glide.with(binding.root)
-                .load(city.image)
-                .into(binding.imagePreview)
-
-            binding.cityName.text = city.key.toString()
-
-            val scoreCity = score
-            Log.d("TestingScoreCityAdapter", "${city.key.toString()} $scoreCity")
-            if (scoreCity.toString().toDouble() <= 100) {
-                binding.safetyLevel.text = context.getString(R.string.safe)
-                binding.iconSafetyMedium.setImageResource(R.drawable.safe_icon_medium)
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                Glide.with(binding.root)
+                    .load(city.image)
+                    .into(binding.imagePreview)
             }
-            if (scoreCity.toString().toDouble() <= 70) {
-                binding.safetyLevel.text = context.getString(R.string.warning)
-                binding.iconSafetyMedium.setImageResource(R.drawable.warning_icon_medium)
-            }
-            if (scoreCity.toString().toDouble() <= 33) {
-                binding.safetyLevel.text = context.getString(R.string.danger)
-                binding.iconSafetyMedium.setImageResource(R.drawable.danger_icon_medium)
+
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main){
+                binding.cityName.text = city.key.toString()
+
+                val scoreCity = score
+                Log.d("TestingScoreCityAdapter", "${city.key.toString()} $scoreCity")
+                if (scoreCity.toString().toDouble() <= 100) {
+                    binding.safetyLevel.text = context.getString(R.string.safe)
+                    binding.iconSafetyMedium.setImageResource(R.drawable.safe_icon_medium)
+                }
+                if (scoreCity.toString().toDouble() <= 70) {
+                    binding.safetyLevel.text = context.getString(R.string.warning)
+                    binding.iconSafetyMedium.setImageResource(R.drawable.warning_icon_medium)
+                }
+                if (scoreCity.toString().toDouble() <= 33) {
+                    binding.safetyLevel.text = context.getString(R.string.danger)
+                    binding.iconSafetyMedium.setImageResource(R.drawable.danger_icon_medium)
+                }
             }
         }
     }

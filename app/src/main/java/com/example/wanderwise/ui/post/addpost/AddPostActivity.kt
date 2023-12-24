@@ -20,23 +20,26 @@ import androidx.annotation.RequiresExtension
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentTransaction
+import androidx.lifecycle.lifecycleScope
 import com.example.mystoryapp.utils.reduceFileImage
 import com.example.mystoryapp.utils.uriToFile
 import com.example.wanderwise.R
 import com.example.wanderwise.databinding.ActivityAddPostBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.data.Result
+import com.example.wanderwise.ui.post.GetPostViewModel
 import com.example.wanderwise.ui.post.PostFragment
 import com.example.wanderwise.ui.profile.ProfileFragment
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AddPostActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityAddPostBinding
     private var imagePickUri: Uri? = null
 
-    private val postViewModel by viewModels<AddPostViewModel> {
-        ViewModelFactory.getInstance(this)
-    }
+    private lateinit var postViewModel: AddPostViewModel
 
     private val launcherGallery = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -65,6 +68,47 @@ class AddPostActivity : AppCompatActivity() {
         binding = ActivityAddPostBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        lifecycleScope.launch(Dispatchers.Main){
+            postViewModel = ViewModelFactory.getInstance(this@AddPostActivity).create(AddPostViewModel::class.java)
+
+            binding.uploadButton.setOnClickListener {
+                imagePickUri?.let { uri ->
+                    val caption = binding.captionEdit.text.toString().trim()
+                    val city = binding.cityEdit.text.toString().trim()
+                    val imageFile = uriToFile(uri, this@AddPostActivity).reduceFileImage()
+
+                    postViewModel.uploadImage(city, caption, imageFile).observe(this@AddPostActivity) { result ->
+                        if (result != null) {
+                            when (result) {
+                                is Result.Loading -> {
+                                    isLoading(true)
+                                }
+
+                                is Result.Success -> {
+                                    showToast(result.data)
+                                    isLoading(false)
+
+                                    binding.captionEdit.text = null
+                                    binding.cityEdit.text = null
+                                    binding.pickImageButton.setImageURI(null)
+                                    onBackPressed()
+                                }
+
+                                is Result.Error -> {
+                                    showToast(result.error)
+                                    isLoading(false)
+                                }
+
+                                else -> {
+                                    Log.d("upload file info", "you enter this state")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         binding.pickCityButton.setOnClickListener {
             val intentMaps = Intent(this, MapsActivity::class.java)
             startActivity(intentMaps)
@@ -79,39 +123,6 @@ class AddPostActivity : AppCompatActivity() {
             binding.cityEdit.text = null
             binding.pickImageButton.setImageURI(null)
             onBackPressed()
-        }
-
-        binding.uploadButton.setOnClickListener {
-            imagePickUri?.let { uri ->
-                val caption = binding.captionEdit.text.toString().trim()
-                val city = binding.cityEdit.text.toString().trim()
-                val imageFile = uriToFile(uri, this).reduceFileImage()
-
-                postViewModel.uploadImage(city, caption, imageFile).observe(this) { result ->
-                    if (result != null) {
-                        when (result) {
-                            is Result.Loading -> {
-                                isLoading(true)
-                            }
-
-                            is Result.Success -> {
-                                showToast(result.data)
-                                isLoading(false)
-
-                                binding.captionEdit.text = null
-                                binding.cityEdit.text = null
-                                binding.pickImageButton.setImageURI(null)
-                                onBackPressed()
-                            }
-
-                            is Result.Error -> {
-                                showToast(result.error)
-                                isLoading(false)
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         supportActionBar?.setBackgroundDrawable(ColorDrawable(Color.parseColor("#FFFFFF")))

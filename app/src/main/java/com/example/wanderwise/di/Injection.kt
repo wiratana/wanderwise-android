@@ -17,7 +17,7 @@ import kotlinx.coroutines.runBlocking
 
 object Injection {
 
-    fun provideRepo(context: Context): PostRepository {
+    suspend fun provideRepo(context: Context): PostRepository {
         val pref = UserPreferences.getInstance(context.dataStore)
         val user = runBlocking { pref.getSession().first()}
         val apiService = ApiConfig.getApiService(user.token)

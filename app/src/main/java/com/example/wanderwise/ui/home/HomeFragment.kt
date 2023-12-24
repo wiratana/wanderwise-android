@@ -43,21 +43,22 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.getValue
 import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.tasks.await
 import java.lang.Exception
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class HomeFragment : Fragment() {
 
     private lateinit var cityAdapter: CityExploreAdapter
 
-    private var _binding: FragmentHomeBinding? = null
+    private lateinit var _binding: FragmentHomeBinding
     private val binding get() = _binding ?: throw IllegalStateException("Binding is null")
 
-    private val homeViewModel by viewModels<HomeViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var homeViewModel: HomeViewModel
 
     private lateinit var postAdapter: PostHomeAdapter
 
@@ -67,156 +68,179 @@ class HomeFragment : Fragment() {
     ): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
 
-        (requireActivity().application as MyLocation).sharedData = "Alex"
+        lifecycleScope.launch{
+            (requireActivity().application as MyLocation).sharedData = ""
+            var currentLoc = ""
+            var disableDetailAccess = false
 
-        var currentLoc = ""
-        var disableDetailAccess = false
+            homeViewModel = ViewModelFactory.getInstance(requireContext()).create(HomeViewModel::class.java)
 
-        val db = FirebaseDatabase.getInstance("https://wanderwise-application-default-rtdb.asia-southeast1.firebasedatabase.app")
+            val db = FirebaseDatabase.getInstance("https://wanderwise-application-default-rtdb.asia-southeast1.firebasedatabase.app")
 
-        homeViewModel.getSessionUser().observe(viewLifecycleOwner) { cityUser ->
+            homeViewModel.getSessionUser().observe(viewLifecycleOwner) { cityUser ->
+                currentLoc = cityUser.userLocation
+                Log.d("current-location-log", cityUser.userLocation)
 
-            homeViewModel.editUserModel(UserModel(
-                name = cityUser.name,
-                token = cityUser.token,
-                email = cityUser.email,
-                uid = cityUser.uid,
-                userLocation = cityUser.userLocation,
-                currentActivity = "profile",
-                isLogin = true
-            ))
-
-            currentLoc = cityUser.userLocation
-
-            val ref = db.getReference("cities/${currentLoc}")
-            val cityListener = object : ValueEventListener {
-                @SuppressLint("SetTextI18n")
-                override fun onDataChange(dataSnapshot: DataSnapshot) {
-                    if (dataSnapshot.exists()) {
-                        binding.locationName.text = dataSnapshot.key.toString()
-                        Glide.with(requireActivity())
-                            .load(dataSnapshot.getValue<City>()!!.image.toString())
-                            .transform(CenterCrop(), RoundedCorners(40))
-                            .into(binding.cityImage)
-                    } else {
-                        binding.locationName.text = "Unlisted"
-                        binding.cityImage.setImageResource(R.drawable.baseline_warning_image)
-                        disableDetailAccess = true
-                    }
-                }
-
-                override fun onCancelled(databaseError: DatabaseError) {
-                    Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
-                }
-            }
-            ref.addValueEventListener(cityListener)
-
-            val currentTime = System.currentTimeMillis()
-            val oneDayAgo = currentTime - (24 * 60 * 60 * 1000)
-            val refNotifications = db.getReference("notifications/${currentLoc}").orderByChild("timestamp").startAt(oneDayAgo.toString().toDouble())
-            val notificationListener = object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    binding.notifAmount.text = snapshot.childrenCount.toString()
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-                    Log.w("TAG", "loadPost:onCancelled", error.toException())
-                }
-            }
-            refNotifications.addValueEventListener(notificationListener)
-
-            val refWeathers = db.getReference("weathers/${currentLoc}")
-            val weatherListener = object : ValueEventListener {
-                override fun onDataChange(dataSnapshot: DataSnapshot) {
-                    if (dataSnapshot.childrenCount > 0){
-                        val temperature = dataSnapshot.getValue<Weather>()!!.temperature.toString()
-                        val formattedTemperature = getString(R.string._29_c, temperature)
-                        binding.temperature.text = formattedTemperature
-
-                        when (dataSnapshot.getValue<Weather>()!!.weather.toString()) {
-                            "rain" -> {
-                                binding.weatherIcon.setImageResource(R.drawable.rainy)
-                            }
-                            "sunny" -> {
-                                binding.weatherIcon.setImageResource(R.drawable.sunny)
-                            }
-                            "stormy" -> {
-                                binding.weatherIcon.setImageResource(R.drawable.stormy)
-                            }
-                            "cloudy" -> {
-                                binding.weatherIcon.setImageResource(R.drawable.cloudy)
-                            }
-                            "windy" -> {
-                                binding.weatherIcon.setImageResource(R.drawable.windy)
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val ref = db.getReference("cities/${currentLoc}")
+                    val cityListener = object : ValueEventListener {
+                        @SuppressLint("SetTextI18n")
+                        override fun onDataChange(dataSnapshot: DataSnapshot) {
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                if (dataSnapshot.exists()) {
+                                    binding.locationName.text = dataSnapshot.key.toString()
+                                    Glide.with(requireActivity())
+                                        .load(dataSnapshot.getValue<City>()!!.image.toString())
+                                        .transform(CenterCrop(), RoundedCorners(40))
+                                        .into(binding.cityImage)
+                                } else {
+                                    binding.locationName.text = "Unlisted"
+                                    binding.cityImage.setImageResource(R.drawable.baseline_warning_image)
+                                    disableDetailAccess = true
+                                }
                             }
                         }
-                    }
-                }
 
-                override fun onCancelled(databaseError: DatabaseError) {
-                    Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
-                }
-            }
-            refWeathers.addValueEventListener(weatherListener)
-
-            val refScores = db.getReference("scores/$currentLoc").limitToLast(1)
-            var scoreCurrent: Any? = null
-            val scoreCurrentListener = object : ValueEventListener {
-                override fun onDataChange(dataSnapshot: DataSnapshot) {
-                    if (dataSnapshot.childrenCount > 0) {
-                        dataSnapshot.children.map {
-                            scoreCurrent = it.getValue<ScoreCurrent>()!!.score
+                        override fun onCancelled(databaseError: DatabaseError) {
+                            Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
                         }
-                    } else {
-                        scoreCurrent = 0
                     }
-
-                    if (scoreCurrent.toString().toDouble() <= 33) {
-                        binding.safetyLevelText.text = getString(R.string.danger)
-                        binding.safetyIcon.setImageResource(R.drawable.danger_icon_small)
-                    } else if (scoreCurrent.toString().toDouble() <= 70) {
-                        binding.safetyLevelText.text = getString(R.string.warning)
-                        binding.safetyIcon.setImageResource(R.drawable.warning_icon_small)
-                    } else if (scoreCurrent.toString().toDouble() <= 100) {
-                        binding.safetyLevelText.text = getString(R.string.safe)
-                        binding.safetyIcon.setImageResource(R.drawable.safe_icon_small)
-                    }
+                    ref.addValueEventListener(cityListener)
                 }
 
-                override fun onCancelled(databaseError: DatabaseError) {
-                    Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
-                }
-            }
-            refScores.addValueEventListener(scoreCurrentListener)
-
-            val refInformation = db.getReference("informations/${currentLoc}").limitToLast(1)
-            val infoListener = object : ValueEventListener {
-                override fun onDataChange(dataSnapshot: DataSnapshot) {
-                    if(dataSnapshot.exists()){
-                        dataSnapshot.children.map {
-                            binding.destinationsAmount.text = it.getValue<Information>()!!.numberOfDestinations.toString()
-                            binding.hospitalAmount.text = it.getValue<Information>()!!.numberOfHospitals.toString()
-                            binding.policeAmount.text = it.getValue<Information>()!!.numberOfPoliceStations.toString()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val currentTime = System.currentTimeMillis()
+                    val oneDayAgo = currentTime - (24 * 60 * 60 * 1000)
+                    val refNotifications =
+                        db.getReference("notifications/${currentLoc}").orderByChild("timestamp")
+                            .startAt(oneDayAgo.toString().toDouble())
+                    val notificationListener = object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                binding.notifAmount.text = snapshot.childrenCount.toString()
+                            }
                         }
-                    } else {
-                        binding.destinationsAmount.text = "0"
-                        binding.hospitalAmount.text = "0"
-                        binding.policeAmount.text = "0"
+
+                        override fun onCancelled(error: DatabaseError) {
+                            Log.w("TAG", "loadPost:onCancelled", error.toException())
+                        }
                     }
+                    refNotifications.addValueEventListener(notificationListener)
                 }
 
-                override fun onCancelled(databaseError: DatabaseError) {
-                    Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val refWeathers = db.getReference("weathers/${currentLoc}")
+                    val weatherListener = object : ValueEventListener {
+                        override fun onDataChange(dataSnapshot: DataSnapshot) {
+                            if (dataSnapshot.childrenCount > 0) {
+                                val temperature =
+                                    dataSnapshot.getValue<Weather>()!!.temperature.toString()
+                                val formattedTemperature = getString(R.string._29_c, temperature)
+
+                                lifecycleScope.launch(Dispatchers.Main) {
+                                    binding.temperature.text = formattedTemperature
+
+                                    when (dataSnapshot.getValue<Weather>()!!.weather.toString()) {
+                                        "rain" -> {
+                                            binding.weatherIcon.setImageResource(R.drawable.rainy)
+                                        }
+
+                                        "sunny" -> {
+                                            binding.weatherIcon.setImageResource(R.drawable.sunny)
+                                        }
+
+                                        "stormy" -> {
+                                            binding.weatherIcon.setImageResource(R.drawable.stormy)
+                                        }
+
+                                        "cloudy" -> {
+                                            binding.weatherIcon.setImageResource(R.drawable.cloudy)
+                                        }
+
+                                        "windy" -> {
+                                            binding.weatherIcon.setImageResource(R.drawable.windy)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        override fun onCancelled(databaseError: DatabaseError) {
+                            Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
+                        }
+                    }
+                    refWeathers.addValueEventListener(weatherListener)
+                }
+
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val refScores = db.getReference("scores/$currentLoc").limitToLast(1)
+                    var scoreCurrent: Any? = null
+                    val scoreCurrentListener = object : ValueEventListener {
+                        override fun onDataChange(dataSnapshot: DataSnapshot) {
+                            if (dataSnapshot.childrenCount > 0) {
+                                dataSnapshot.children.map {
+                                    scoreCurrent = it.getValue<ScoreCurrent>()!!.score
+                                }
+                            } else {
+                                scoreCurrent = 0
+                            }
+
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                if (scoreCurrent.toString().toDouble() <= 33) {
+                                    binding.safetyLevelText.text = getString(R.string.danger)
+                                    binding.safetyIcon.setImageResource(R.drawable.danger_icon_small)
+                                } else if (scoreCurrent.toString().toDouble() <= 70) {
+                                    binding.safetyLevelText.text = getString(R.string.warning)
+                                    binding.safetyIcon.setImageResource(R.drawable.warning_icon_small)
+                                } else if (scoreCurrent.toString().toDouble() <= 100) {
+                                    binding.safetyLevelText.text = getString(R.string.safe)
+                                    binding.safetyIcon.setImageResource(R.drawable.safe_icon_small)
+                                }
+                            }
+                        }
+
+                        override fun onCancelled(databaseError: DatabaseError) {
+                            Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
+                        }
+                    }
+                    refScores.addValueEventListener(scoreCurrentListener)
+                }
+
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val refInformation =
+                        db.getReference("informations/${currentLoc}").limitToLast(1)
+                    val infoListener = object : ValueEventListener {
+                        override fun onDataChange(dataSnapshot: DataSnapshot) {
+                            lifecycleScope.launch(Dispatchers.Main) {
+                                if (dataSnapshot.exists()) {
+                                    dataSnapshot.children.map {
+                                        binding.destinationsAmount.text =
+                                            it.getValue<Information>()!!.numberOfDestinations.toString()
+                                        binding.hospitalAmount.text =
+                                            it.getValue<Information>()!!.numberOfHospitals.toString()
+                                        binding.policeAmount.text =
+                                            it.getValue<Information>()!!.numberOfPoliceStations.toString()
+                                    }
+                                } else {
+                                    binding.destinationsAmount.text = "0"
+                                    binding.hospitalAmount.text = "0"
+                                    binding.policeAmount.text = "0"
+                                }
+                            }
+                        }
+
+                        override fun onCancelled(databaseError: DatabaseError) {
+                            Log.w("TAG", "loadPost:onCancelled", databaseError.toException())
+                        }
+                    }
+                    refInformation.addValueEventListener(infoListener)
                 }
             }
-            refInformation.addValueEventListener(infoListener)
-        }
 
-        try {
+            lifecycleScope.launch(Dispatchers.IO) {
+                var cities = ArrayList<City>()
+                var scores = ArrayList<Double>()
 
-            val cities = ArrayList<City>()
-            val scores = ArrayList<Double>()
-            lifecycleScope.launch {
                 val citiesSnapshot = db.getReference("cities").get().await()
 
                 citiesSnapshot.children.forEach { city ->
@@ -235,10 +259,12 @@ class HomeFragment : Fragment() {
 
                 val deferredScores = cities.map { city ->
                     async {
-                        val scoreSnapshot = db.getReference("scores/${city.key}").limitToLast(1).get().await()
+                        val scoreSnapshot =
+                            db.getReference("scores/${city.key}").limitToLast(1).get().await()
 
                         if (scoreSnapshot.childrenCount > 0) {
-                            scoreSnapshot.children.first().getValue<Score>()?.score?.toString()?.toDouble() ?: 0.0
+                            scoreSnapshot.children.first().getValue<Score>()?.score?.toString()
+                                ?.toDouble() ?: 0.0
                         } else {
                             0.0
                         }
@@ -247,22 +273,31 @@ class HomeFragment : Fragment() {
 
                 scores.addAll(deferredScores.map { it.await() })
 
-                cityAdapter = CityExploreAdapter(requireActivity(), cities, scores, homeViewModel, CityFavorite(id = 0,key = "",isLoved = false), viewLifecycleOwner)
-                binding.exploreCityRv.layoutManager =
-                    LinearLayoutManager(requireActivity(), LinearLayoutManager.HORIZONTAL, false)
-                binding.exploreCityRv.setHasFixedSize(true)
-                binding.exploreCityRv.adapter = cityAdapter
+                lifecycleScope.launch(Dispatchers.Main) {
+                    cityAdapter = CityExploreAdapter(
+                        requireActivity(),
+                        cities,
+                        scores,
+                        homeViewModel,
+                        CityFavorite(id = 0, key = "", isLoved = false),
+                        viewLifecycleOwner
+                    )
+
+                    binding.exploreCityRv.layoutManager =
+                        LinearLayoutManager(requireActivity(), LinearLayoutManager.HORIZONTAL, false)
+                    binding.exploreCityRv.setHasFixedSize(true)
+                    binding.exploreCityRv.adapter = cityAdapter
+
+                    cities = ArrayList()
+                    scores = ArrayList()
+                }
             }
-        } catch (e: Exception){
-            Log.e("Error", "Failed to fetch data: ${e.message}")
-        }
+
+            lifecycleScope.launch (Dispatchers.IO){
+                val dbPost = Firebase.firestore
+                var userAllPosts = ArrayList<PostsItem>()
 
 
-        try {
-            val dbPost = Firebase.firestore
-            val userAllPosts = ArrayList<PostsItem>()
-
-            lifecycleScope.launch {
                 val postsDataSnapshot = dbPost.collection("posts").get().await()
 
                 postsDataSnapshot.documents.forEach{doc ->
@@ -282,77 +317,64 @@ class HomeFragment : Fragment() {
                     )
                 }
 
-                if (binding != null){
+                lifecycleScope.launch (Dispatchers.Main){
                     postAdapter = PostHomeAdapter(requireActivity(), userAllPosts)
                     binding.popularPostRv.layoutManager = LinearLayoutManager(requireActivity(),  LinearLayoutManager.HORIZONTAL, false)
                     binding.popularPostRv.setHasFixedSize(true)
                     binding.popularPostRv.adapter = postAdapter
+                    userAllPosts = ArrayList()
                 }
             }
-        } catch (e: Exception){
-            Log.e("Error", "Failed to fetch data: ${e.message}")
-        }
 
-        binding.favoriteButton.setOnClickListener {
-            val intentFavorite = Intent(activity, FavoriteActivity::class.java)
-            startActivity(intentFavorite)
-        }
 
-        binding.notificationButton.setOnClickListener {
-            val intentNotif = Intent(activity, NotificationActivity::class.java)
-            intentNotif.putExtra("cityKey", currentLoc)
-            startActivity(intentNotif)
-        }
 
-        binding.seeDetailButton.setOnClickListener {
-            val intentExplore = Intent(activity, ExploreCityMoreActivity::class.java)
-            startActivity(intentExplore)
-        }
-
-        binding.emergencyButton.setOnClickListener {
-            val intentEmergency = Intent(activity, EmergencyActivity::class.java)
-            startActivity(intentEmergency)
-        }
-
-        binding.cardDetailCity.setOnClickListener {
-            homeViewModel.getSessionUser().observe(viewLifecycleOwner) { user ->
-                homeViewModel.editUserModel(
-                    UserModel(
-                        name = user.name,
-                        token = user.token,
-                        email = user.email,
-                        uid = user.uid,
-                        userLocation = user.userLocation,
-                        currentActivity = "CardCurrentLocation",
-                        isLogin = true
-                    )
-                )
+            binding.notificationButton.setOnClickListener {
+                val intentNotif = Intent(activity, NotificationActivity::class.java)
+                intentNotif.putExtra("cityKey", currentLoc)
+                startActivity(intentNotif)
             }
 
-            if(!disableDetailAccess){
-                val intent = Intent(activity, DetailInfoCityActivity::class.java)
-                intent.putExtra(DetailInfoCityActivity.KEY_CITY, currentLoc)
-                startActivity(intent)
-            } else {
-                Toast.makeText(context, "Your Location is Not Listed in Our Database", Toast.LENGTH_LONG).show()
+            binding.cardDetailCity.setOnClickListener {
+                if (!disableDetailAccess) {
+                    val intent = Intent(activity, DetailInfoCityActivity::class.java)
+                    intent.putExtra(DetailInfoCityActivity.KEY_CITY, currentLoc)
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(
+                        requireContext(),
+                        "Your Location is Not Listed in Our Database",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
 
+            homeViewModel.getSessionUser().observe(viewLifecycleOwner) {
+                binding.usernameUser.text = it.name
+            }
         }
 
-        binding.seeAll.setOnClickListener {
-            findNavController().popBackStack(R.id.homeFragment, false)
-            findNavController().navigate(R.id.postFragment)
-        }
+        lifecycleScope.launch(Dispatchers.Main) {
+            binding.favoriteButton.setOnClickListener {
+                val intentFavorite = Intent(activity, FavoriteActivity::class.java)
+                startActivity(intentFavorite)
+            }
 
-        homeViewModel.getSessionUser().observe(viewLifecycleOwner) {
-            binding.usernameUser.text = it.name
+            binding.seeDetailButton.setOnClickListener {
+                val intentExplore = Intent(activity, ExploreCityMoreActivity::class.java)
+                startActivity(intentExplore)
+            }
+
+            binding.emergencyButton.setOnClickListener {
+                val intentEmergency = Intent(activity, EmergencyActivity::class.java)
+                startActivity(intentEmergency)
+            }
+
+            binding.seeAll.setOnClickListener {
+                findNavController().popBackStack(R.id.homeFragment, false)
+                findNavController().navigate(R.id.postFragment)
+            }
         }
 
         return binding.root
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
     }
 }

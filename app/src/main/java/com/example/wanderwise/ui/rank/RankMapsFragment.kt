@@ -20,6 +20,7 @@ import com.example.wanderwise.data.database.Marker
 import com.example.wanderwise.data.database.Score
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.home.HomeViewModel
+import com.example.wanderwise.ui.profile.ProfileViewModel
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
@@ -36,14 +37,16 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.getValue
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.io.IOException
 
 class RankMapsFragment : Fragment() {
-    private val homeViewModel by viewModels<HomeViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var homeViewModel: HomeViewModel
     private lateinit var mMap: GoogleMap
 
     private val boundsBuilder = Builder()
@@ -67,19 +70,28 @@ class RankMapsFragment : Fragment() {
 
         val db = FirebaseDatabase.getInstance("https://wanderwise-application-default-rtdb.asia-southeast1.firebasedatabase.app")
 
-        try {
-            lifecycleScope.launch {
-                var location: Pair<Double, Double>? = null
-                var location_label = ""
-                homeViewModel.getSessionUser().observe(viewLifecycleOwner) { user ->
-                    location = getLatLngFromCityName(requireContext(), user.userLocation)!!
-                    boundsBuilder.include(LatLng(location!!.first, location!!.second))
-                    location_label = user.userLocation
+        var location: Pair<Double, Double>? = null
+        var location_label = ""
+
+        lifecycleScope.launch(Dispatchers.Main) {
+            homeViewModel = ViewModelFactory.getInstance(requireContext()).create(HomeViewModel::class.java)
+
+
+            homeViewModel.getSessionUser().observe(viewLifecycleOwner) { user ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    location = getLatLngFromCityName(requireContext(), user.userLocation)
+
+                    if (location != null){
+                        boundsBuilder.include(LatLng(location!!.first, location!!.second))
+                        location_label = user.userLocation
+                    }
                 }
+            }
 
-                var markers: ArrayList<Marker> = arrayListOf()
-                val refCities = db.getReference("cities").get().await()
+            var markers: ArrayList<Marker> = arrayListOf()
+            val refCities = db.getReference("cities").get().await()
 
+            lifecycleScope.launch(Dispatchers.IO) {
                 refCities.children.forEach { city ->
                     val refScores =
                         db.getReference("scores/${city.key}").limitToLast(1).get().await()
@@ -95,58 +107,71 @@ class RankMapsFragment : Fragment() {
                     }
                 }
 
-                val sortedMarkers =
-                    markers.toList().sortedByDescending { it.score.toString().toDouble() }
-                val top3Markers = sortedMarkers.take(3)
+                lifecycleScope.launch(Dispatchers.Main) {
+                    val sortedMarkers =
+                        markers.toList().sortedByDescending { it.score.toString().toDouble() }
+                    val top3Markers = sortedMarkers.take(3)
+                    var topMarkers = LatLng(0.0,0.0)
+                    var user_location = LatLng(0.0, 0.0)
 
-                for (i in 0 until 3) {
-                    val location: LocationCity = top3Markers[i].location as LocationCity
-                    val markerLatLng = LatLng(location.lat as Double, location.lon as Double)
+                    for (i in 0 until 3) {
+                        val location: LocationCity = top3Markers[i].location as LocationCity
+                        val markerLatLng = LatLng(location.lat as Double, location.lon as Double)
 
-                    mMap.addMarker(
-                        MarkerOptions()
-                            .position(markerLatLng)
-                            .title(top3Markers[i].key.toString())
-                            .snippet(top3Markers[i].score.toString())
-                            .icon(rank[i] as? BitmapDescriptor)
-                    ).also { marker ->
-                        if (marker != null) {
-                            marker.tag = top3Markers[i].key.toString()
+                        if (i == 0){
+                            topMarkers = markerLatLng
+                        }
+
+                        mMap.addMarker(
+                            MarkerOptions()
+                                .position(markerLatLng)
+                                .title(top3Markers[i].key.toString())
+                                .snippet(top3Markers[i].score.toString())
+                                .icon(rank[i] as? BitmapDescriptor)
+                        ).also { marker ->
+                            if (marker != null) {
+                                marker.tag = top3Markers[i].key.toString()
+                            }
                         }
                     }
-                }
 
-                val user_location = LatLng(location!!.first, location!!.second)
-                mMap.addMarker(
-                    MarkerOptions()
-                        .position(user_location)
-                        .title("Your Current Location")
-                        .snippet(location_label)
-                ).also { marker ->
-                    if (marker != null) {
-                        marker.tag = location_label
+                    if (location != null){
+                        user_location = LatLng(location!!.first, location!!.second)
+                        mMap.addMarker(
+                            MarkerOptions()
+                                .position(user_location)
+                                .title("Your Current Location")
+                                .snippet(location_label)
+                        ).also { marker ->
+                            if (marker != null) {
+                                marker.tag = location_label
+                            }
+                        }
+                    } else {
+                        boundsBuilder.include(topMarkers)
+                        user_location = topMarkers
                     }
-                }
 
-                val bound = boundsBuilder.build()
-                mMap.animateCamera(
-                    CameraUpdateFactory.newLatLngBounds(
-                        bound,
-                        resources.displayMetrics.widthPixels,
-                        resources.displayMetrics.heightPixels,
-                        resources.displayMetrics.widthPixels
+                    val bound = boundsBuilder.build()
+                    mMap.animateCamera(
+                        CameraUpdateFactory.newLatLngBounds(
+                            bound,
+                            resources.displayMetrics.widthPixels,
+                            resources.displayMetrics.heightPixels,
+                            resources.displayMetrics.widthPixels/2
+                        )
                     )
-                )
 
-                mMap.animateCamera(
-                    CameraUpdateFactory.newLatLngZoom(user_location, 10.0f)
-                )
+                    mMap.animateCamera(
+                        CameraUpdateFactory.newLatLngZoom(
+                            user_location,
+                            10.0f)
+                    )
+
+                    setMapStyle()
+                }
             }
-        } catch (e: Exception){
-            Log.e("Error", "Failed to fetch data: ${e.message}")
         }
-
-        setMapStyle()
     }
 
     override fun onCreateView(
@@ -182,21 +207,18 @@ class RankMapsFragment : Fragment() {
         }
     }
 
-    fun getLatLngFromCityName(context: Context, cityName: String): Pair<Double, Double>? {
-        val geocoder = Geocoder(context)
-
-        try {
-            val addresses: List<Address> = geocoder.getFromLocationName(cityName, 1)!!
-
-            if (addresses.isNotEmpty()) {
-                val latitude = addresses[0].latitude
-                val longitude = addresses[0].longitude
-                return Pair(latitude, longitude)
+    @Suppress("DEPRECATION")
+    suspend fun getLatLngFromCityName(context: Context, cityName: String): Pair<Double, Double>? {
+        return withContext(Dispatchers.IO){
+            val geocoder = Geocoder(context)
+            val addresses: Deferred<MutableList<Address>> = async { geocoder.getFromLocationName(cityName, 1)!! }
+            if (addresses.await().isNotEmpty()){
+                val latitude = addresses.await().first().latitude
+                val longitude = addresses.await().first().longitude
+                Pair(latitude, longitude)
+            } else {
+                null
             }
-        } catch (e: IOException) {
-            e.printStackTrace()
         }
-
-        return null
     }
 }

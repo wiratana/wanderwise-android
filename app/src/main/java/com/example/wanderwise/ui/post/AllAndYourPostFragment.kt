@@ -18,13 +18,16 @@ import com.example.wanderwise.databinding.FragmentPostBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.adapter.CityExploreAdapter
 import com.example.wanderwise.ui.adapter.PostAdapter
+import com.example.wanderwise.ui.home.HomeViewModel
 //import com.example.wanderwise.ui.adapter.PostAdapter
 import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 class AllAndYourPostFragment : Fragment() {
 
@@ -33,9 +36,7 @@ class AllAndYourPostFragment : Fragment() {
 
     private lateinit var adapterUserPost: PostAdapter
 
-    private val postViewModel by viewModels<GetPostViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var postViewModel:GetPostViewModel
 
     private var position: Int? = null
 
@@ -45,83 +46,97 @@ class AllAndYourPostFragment : Fragment() {
     ): View {
         _binding = FragmentAllAndYourPostBinding.inflate(inflater, container, false)
         val view = binding.root
+        var current_uid: String? = ""
+        lifecycleScope.launch(Dispatchers.Main){
+            postViewModel = ViewModelFactory.getInstance(requireContext()).create(GetPostViewModel::class.java)
 
-        postViewModel.getSessionUser().observe(viewLifecycleOwner) { uid ->
-            val uidUser = uid.uid
-            val db = Firebase.firestore
+            postViewModel.getSessionUser().observe(viewLifecycleOwner) { uid ->
+                if (current_uid != uid.uid){
+                    val uidUser = uid.uid
+                    val db = Firebase.firestore
 
-            arguments?.let {
-                position = it.getInt(ARG_POSITION)
-            }
-
-            if (position == 1) {
-                val userAllPosts = ArrayList<PostsItem>()
-                showLoading(true)
-
-                try {
-                    lifecycleScope.launch {
-                        val postSnapshot = db.collection("posts").get().await()
-                        postSnapshot.documents.forEach() { doc ->
-                            userAllPosts.add(
-                                PostsItem(
-                                    image = doc.getString("image"),
-                                    createdAt = CreatedAt(
-                                        seconds = doc.getTimestamp("createdAt")!!.seconds,
-                                        nanoseconds = doc.getTimestamp("createdAt")!!.nanoseconds
-                                    ),
-                                    caption = doc.getString("caption"),
-                                    id = doc.getString("userId"),
-                                    title = doc.getString("city"),
-                                    idPost =  doc.getString("idPost"),
-                                    name = doc.getString("name"),
-                                    photoUser = doc.getString("photo")
-                                )
-                            )
-                        }
-
-                        showLoading(false)
-                        adapterUserPost = PostAdapter(requireContext(), userAllPosts)
-                        binding.rvAllYourPost.layoutManager = LinearLayoutManager(requireContext())
-                        binding.rvAllYourPost.setHasFixedSize(true)
-                        binding.rvAllYourPost.adapter = adapterUserPost
+                    arguments?.let {
+                        position = it.getInt(ARG_POSITION)
                     }
-                } catch (e: Exception) {
-                    Log.e("Error", "Failed to fetch data: ${e.message}")
-                }
-            } else {
-                val userPosts = ArrayList<PostsItem>()
-                showLoading(true)
 
-                try {
-                    lifecycleScope.launch {
-                        val postSnapshot = db.collection("posts").whereEqualTo("userId", uidUser).get().await()
+                    if (position == 1) {
+                        val userAllPosts = ArrayList<PostsItem>()
+                        showLoading(true)
 
-                        postSnapshot.documents.forEach() {doc ->
-                            userPosts.add(
-                                PostsItem(
-                                    image = doc.getString("image"),
-                                    createdAt = CreatedAt(
-                                        seconds = doc.getTimestamp("createdAt")!!.seconds,
-                                        nanoseconds = doc.getTimestamp("createdAt")!!.nanoseconds
-                                    ),
-                                    caption = doc.getString("caption"),
-                                    id = doc.getString("userId"),
-                                    title = doc.getString("city"),
-                                    idPost =  doc.getString("idPost"),
-                                    name = doc.getString("name"),
-                                    photoUser = doc.getString("photo")
-                                )
-                            )
+                        try {
+                            lifecycleScope.launch(Dispatchers.IO){
+                                val postSnapshot = db.collection("posts").get().await()
+                                postSnapshot.documents.forEach() { doc ->
+                                    userAllPosts.add(
+                                        PostsItem(
+                                            image = doc.getString("image"),
+                                            createdAt = CreatedAt(
+                                                seconds = doc.getTimestamp("createdAt")!!.seconds,
+                                                nanoseconds = doc.getTimestamp("createdAt")!!.nanoseconds
+                                            ),
+                                            caption = doc.getString("caption"),
+                                            id = doc.getString("userId"),
+                                            title = doc.getString("city"),
+                                            idPost =  doc.getString("idPost"),
+                                            name = doc.getString("name"),
+                                            photoUser = doc.getString("photo")
+                                        )
+                                    )
+                                }
+
+                                lifecycleScope.launch(Dispatchers.Main){
+                                    showLoading(false)
+                                    adapterUserPost = PostAdapter(requireContext(), userAllPosts)
+                                    binding.rvAllYourPost.layoutManager = LinearLayoutManager(requireContext())
+                                    binding.rvAllYourPost.setHasFixedSize(true)
+                                    binding.rvAllYourPost.adapter = adapterUserPost
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("Error", "Failed to fetch data: ${e.message}")
                         }
+                    } else {
+                        val userPosts = ArrayList<PostsItem>()
+                        showLoading(true)
 
-                        showLoading(false)
-                        adapterUserPost = PostAdapter(requireContext(), userPosts)
-                        binding.rvAllYourPost.layoutManager = LinearLayoutManager(requireContext())
-                        binding.rvAllYourPost.setHasFixedSize(true)
-                        binding.rvAllYourPost.adapter = adapterUserPost
+                        try {
+                            lifecycleScope.launch (Dispatchers.IO){
+                                val postSnapshot = db.collection("posts").whereEqualTo("userId", uidUser).get().await()
+
+                                postSnapshot.documents.forEach() {doc ->
+                                    userPosts.add(
+                                        PostsItem(
+                                            image = doc.getString("image"),
+                                            createdAt = CreatedAt(
+                                                seconds = doc.getTimestamp("createdAt")!!.seconds,
+                                                nanoseconds = doc.getTimestamp("createdAt")!!.nanoseconds
+                                            ),
+                                            caption = doc.getString("caption"),
+                                            id = doc.getString("userId"),
+                                            title = doc.getString("city"),
+                                            idPost =  doc.getString("idPost"),
+                                            name = doc.getString("name"),
+                                            photoUser = doc.getString("photo")
+                                        )
+                                    )
+                                }
+
+                                lifecycleScope.launch(Dispatchers.Main){
+                                    showLoading(false)
+                                    adapterUserPost = PostAdapter(requireContext(), userPosts)
+                                    binding.rvAllYourPost.layoutManager = LinearLayoutManager(requireContext())
+                                    binding.rvAllYourPost.setHasFixedSize(true)
+                                    binding.rvAllYourPost.adapter = adapterUserPost
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("Error", "Failed to fetch data: ${e.message}")
+                        }
                     }
-                } catch (e: Exception) {
-                    Log.e("Error", "Failed to fetch data: ${e.message}")
+
+                    current_uid = uidUser
+                } else {
+                    Log.d("log-post", "make observe run once")
                 }
             }
         }

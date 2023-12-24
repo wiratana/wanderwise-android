@@ -2,10 +2,14 @@ package com.example.wanderwise.ui.adapter
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.resource.bitmap.CenterCrop
@@ -20,14 +24,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.internal.wait
 
 class DetailListCityAdapter(
     private val homeViewModel: HomeViewModel,
     private val context: Context,
     private val cities: MutableMap<String,DataNeed>,
-    private val cityFavorite: CityFavorite
+    private val cityFavorite: CityFavorite,
+    private val lifecycleCoroutineScope: LifecycleCoroutineScope
 ): RecyclerView.Adapter<DetailListCityAdapter.MyViewHolder>() {
 
     override fun onCreateViewHolder(
@@ -44,8 +51,9 @@ class DetailListCityAdapter(
             val dataNeedList = cities.values.toList()
             if (position < dataNeedList.size){
                 val dataNeed = dataNeedList[position]
-                GlobalScope.launch {
-                    holder.bind(context, dataNeed, homeViewModel)
+                Log.d("favorite-city-data", "dataneed : ${dataNeedList[position]}")
+                lifecycleCoroutineScope.launch(Dispatchers.Main) {
+                    holder.bind(context, dataNeed, homeViewModel, lifecycleCoroutineScope)
                 }
 
                 holder.itemView.setOnClickListener {
@@ -55,8 +63,10 @@ class DetailListCityAdapter(
                 }
 
                 holder.binding.loveIcon.setOnClickListener {
-                    GlobalScope.launch(Dispatchers.Default) {
-                        val clickedCity = homeViewModel.getClickedCity(dataNeed.key.toString())
+                    lifecycleCoroutineScope.launch(Dispatchers.Main) {
+                        val clickedCity = withContext(Dispatchers.IO){
+                            homeViewModel.getClickedCity(dataNeed.key.toString())
+                        }
                         if (clickedCity != null && clickedCity.key == dataNeed.key.toString()){
                             homeViewModel.delete(clickedCity.key.toString())
 
@@ -91,62 +101,85 @@ class DetailListCityAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         @OptIn(DelicateCoroutinesApi::class)
-        suspend fun bind(context: Context, city: DataNeed, homeViewModel: HomeViewModel) {
-            GlobalScope.launch(Dispatchers.Default) {
+        suspend fun bind(
+            context: Context,
+            city: DataNeed,
+            homeViewModel: HomeViewModel,
+            lifecycleCoroutineScope: LifecycleCoroutineScope
+        ) {
+            lifecycleCoroutineScope.launch(Dispatchers.IO) {
                 val clickedCity = homeViewModel.getClickedCity(city.key.toString())
-                if (clickedCity != null && clickedCity.key == city.key.toString()) {
-                    binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_fill_icon))
+                var clickedCityKey = ""
+
+                if (clickedCity != null){
+                    clickedCityKey = clickedCity.key.toString()
+                }
+
+                if (clickedCityKey == city.key.toString()) {
+                    lifecycleCoroutineScope.launch(Dispatchers.Main){
+                        binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_fill_icon))
+                    }
                 } else {
-                    binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_outline_icon))
+                    lifecycleCoroutineScope.launch(Dispatchers.Main){
+                        binding.loveIcon.setImageDrawable(ContextCompat.getDrawable(binding.loveIcon.context, R.drawable.love_outline_icon))
+                    }
                 }
             }
 
-            loadImageAsync(binding.cityImage, city.image.toString())
-
-            binding.currentLocText.text = city.area.toString()
-
-            binding.locationName.text = city.key.toString()
-
-            binding.destinationsAmount.text = city.numberOfDestination.toString()
-
-            binding.hospitalAmount.text = city.numberOfHospitals.toString()
-
-            binding.policeAmount.text = city.numberOfPoliceStations.toString()
-
-            val temperature = city.temperature.toString()
-            val formattedTemperature = context.getString(R.string._29_c, temperature)
-            binding.temperature.text = formattedTemperature
-
-            when (city.weather.toString()) {
-                "rain" -> {
-                    binding.weatherIcon.setImageResource(R.drawable.rainy)
-                }
-                "sunny" -> {
-                    binding.weatherIcon.setImageResource(R.drawable.sunny)
-                }
-                "stormy" -> {
-                    binding.weatherIcon.setImageResource(R.drawable.stormy)
-                }
-                "cloudy" -> {
-                    binding.weatherIcon.setImageResource(R.drawable.cloudy)
-                }
-                "windy" -> {
-                    binding.weatherIcon.setImageResource(R.drawable.windy)
-                }
+            lifecycleCoroutineScope.launch(Dispatchers.Main) {
+                // Load image on the IO dispatcher
+                Glide.with(binding.cityImage)
+                    .load(city.image.toString())
+                    .transform(CenterCrop(), RoundedCorners(40))
+                    .into(binding.cityImage)
             }
 
-            if (city.score != null) {
-                if (city.score.toString().toDouble() <= 33) {
-                    binding.safetyLevelText.text = context.getString(R.string.danger)
-                    binding.safetyIcon.setImageResource(R.drawable.danger_icon_small)
-                } else if (city.score.toString().toDouble() <= 70) {
-                    binding.safetyLevelText.text = context.getString(R.string.warning)
-                    binding.safetyIcon.setImageResource(R.drawable.warning_icon_small)
-                } else if (city.score.toString().toDouble() <= 100) {
-                    binding.safetyLevelText.text = context.getString(R.string.safe)
-                    binding.safetyIcon.setImageResource(R.drawable.safe_icon_small)
+            lifecycleCoroutineScope.launch(Dispatchers.Main){
+                binding.currentLocText.text = city.area.toString()
+
+                binding.locationName.text = city.key.toString()
+
+                binding.destinationsAmount.text = city.numberOfDestination.toString()
+
+                binding.hospitalAmount.text = city.numberOfHospitals.toString()
+
+                binding.policeAmount.text = city.numberOfPoliceStations.toString()
+
+                val temperature = city.temperature.toString()
+                val formattedTemperature = context.getString(R.string._29_c, temperature)
+                binding.temperature.text = formattedTemperature
+
+                when (city.weather.toString()) {
+                    "rain" -> {
+                        binding.weatherIcon.setImageResource(R.drawable.rainy)
+                    }
+                    "sunny" -> {
+                        binding.weatherIcon.setImageResource(R.drawable.sunny)
+                    }
+                    "stormy" -> {
+                        binding.weatherIcon.setImageResource(R.drawable.stormy)
+                    }
+                    "cloudy" -> {
+                        binding.weatherIcon.setImageResource(R.drawable.cloudy)
+                    }
+                    "windy" -> {
+                        binding.weatherIcon.setImageResource(R.drawable.windy)
+                    }
                 }
 
+                if (city.score != null) {
+                    if (city.score.toString().toDouble() <= 33) {
+                        binding.safetyLevelText.text = context.getString(R.string.danger)
+                        binding.safetyIcon.setImageResource(R.drawable.danger_icon_small)
+                    } else if (city.score.toString().toDouble() <= 70) {
+                        binding.safetyLevelText.text = context.getString(R.string.warning)
+                        binding.safetyIcon.setImageResource(R.drawable.warning_icon_small)
+                    } else if (city.score.toString().toDouble() <= 100) {
+                        binding.safetyLevelText.text = context.getString(R.string.safe)
+                        binding.safetyIcon.setImageResource(R.drawable.safe_icon_small)
+                    }
+
+                }
             }
         }
     }
@@ -154,14 +187,4 @@ class DetailListCityAdapter(
 
 internal fun CoroutineScope.getString(safe: Int): CharSequence? {
     return getString(safe)
-}
-
-suspend fun loadImageAsync(imageView: ImageView, imageUrl: String) {
-    withContext(Dispatchers.Main) {
-        // Load image on the IO dispatcher
-        Glide.with(imageView)
-            .load(imageUrl)
-            .transform(CenterCrop(), RoundedCorners(40))
-            .into(imageView)
-    }
 }

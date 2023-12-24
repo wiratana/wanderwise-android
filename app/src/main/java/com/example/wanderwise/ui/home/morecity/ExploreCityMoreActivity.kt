@@ -5,32 +5,28 @@ import android.graphics.drawable.ColorDrawable
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.wanderwise.R
 import com.example.wanderwise.data.database.City
 import com.example.wanderwise.data.database.DataNeed
 import com.example.wanderwise.data.database.Information
 import com.example.wanderwise.data.database.Score
 import com.example.wanderwise.data.database.Weather
 import com.example.wanderwise.data.local.database.CityFavorite
-import com.example.wanderwise.databinding.ActivityDetailInfoCityBinding
 import com.example.wanderwise.databinding.ActivityExploreCityMoreBinding
-import com.example.wanderwise.databinding.ActivityFavoriteBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.adapter.DetailListCityAdapter
 import com.example.wanderwise.ui.home.HomeViewModel
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.getValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.lang.Exception
 
 class ExploreCityMoreActivity : AppCompatActivity() {
-    private val homeViewModel by viewModels<HomeViewModel> {
-        ViewModelFactory.getInstance(this)
-    }
+    private lateinit var homeViewModel: HomeViewModel
 
     private lateinit var binding: ActivityExploreCityMoreBinding
 
@@ -39,6 +35,12 @@ class ExploreCityMoreActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityExploreCityMoreBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        lifecycleScope.launch{
+            homeViewModel = withContext(Dispatchers.IO){
+                ViewModelFactory.getInstance(this@ExploreCityMoreActivity).create(HomeViewModel::class.java)
+            }
+        }
 
         val db = FirebaseDatabase.getInstance("https://wanderwise-application-default-rtdb.asia-southeast1.firebasedatabase.app")
 
@@ -93,7 +95,13 @@ class ExploreCityMoreActivity : AppCompatActivity() {
                     isLoved = false
                 )
 
-                detailListCityAdapter = DetailListCityAdapter(homeViewModel,this@ExploreCityMoreActivity, cities, cityFavorite)
+                detailListCityAdapter = DetailListCityAdapter(
+                    homeViewModel = homeViewModel,
+                    context = this@ExploreCityMoreActivity,
+                    cities = cities,
+                    cityFavorite,
+                    this@ExploreCityMoreActivity.lifecycleScope
+                )
                 binding.rvExplore.layoutManager = LinearLayoutManager(this@ExploreCityMoreActivity)
                 binding.rvExplore.setHasFixedSize(true)
                 binding.rvExplore.adapter = detailListCityAdapter

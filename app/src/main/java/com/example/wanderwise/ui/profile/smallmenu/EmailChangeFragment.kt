@@ -7,21 +7,23 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import com.example.wanderwise.R
 import com.example.wanderwise.data.Result
 import com.example.wanderwise.databinding.FragmentAboutUsBinding
 import com.example.wanderwise.databinding.FragmentEmailChangeBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.profile.ProfileViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class EmailChangeFragment : DialogFragment() {
 
     private var _binding: FragmentEmailChangeBinding? = null
     private val binding get() = _binding!!
 
-    private val profileViewModel by viewModels<ProfileViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var profileViewModel: ProfileViewModel
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -29,6 +31,12 @@ class EmailChangeFragment : DialogFragment() {
     ): View {
         _binding = FragmentEmailChangeBinding.inflate(inflater, container, false)
         val view = binding.root
+
+        lifecycleScope.launch {
+            profileViewModel = withContext(Dispatchers.IO) {
+                ViewModelFactory.getInstance(requireContext()).create(ProfileViewModel::class.java)
+            }
+        }
 
         binding.cancelButton.setOnClickListener {
             dismiss()

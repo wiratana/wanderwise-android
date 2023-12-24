@@ -1,6 +1,7 @@
 package com.example.wanderwise.ui
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.wanderwise.data.PostRepository
@@ -13,6 +14,10 @@ import com.example.wanderwise.ui.post.addpost.AddPostActivity
 import com.example.wanderwise.ui.post.addpost.AddPostViewModel
 import com.example.wanderwise.ui.profile.ProfileViewModel
 import com.example.wanderwise.ui.register.RegisterViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.lang.IllegalArgumentException
 
 class ViewModelFactory private constructor(
@@ -40,10 +45,19 @@ class ViewModelFactory private constructor(
     companion object {
         @Volatile
         private var instance: ViewModelFactory? = null
-        fun getInstance(context: Context): ViewModelFactory =
-            instance ?: synchronized(this) {
-                instance ?: ViewModelFactory(
-                    Injection.provideRepo(context))
-            }.also { instance = it }
+        suspend fun getInstance(context: Context): ViewModelFactory =
+            instance ?: Mutex().withLock {
+                ViewModelFactory(
+                    Injection.run {
+                        withContext(Dispatchers.IO) {
+                            provideRepo(context)
+                        }
+                    }
+                ).also {
+                    instance = it
+                    Log.d("view-model-factory", "created")
+                }
+            }
+
     }
 }

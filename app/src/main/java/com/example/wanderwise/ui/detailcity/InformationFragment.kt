@@ -25,14 +25,17 @@ import com.example.wanderwise.databinding.FragmentNewsBinding
 import com.example.wanderwise.ui.ViewModelFactory
 import com.example.wanderwise.ui.adapter.DestinationAdapter
 import com.example.wanderwise.ui.home.HomeViewModel
+import com.example.wanderwise.ui.profile.ProfileViewModel
 import com.example.wanderwise.utils.MyLocation
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.getValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import kotlin.math.cos
 
 class InformationFragment : Fragment() {
@@ -40,9 +43,7 @@ class InformationFragment : Fragment() {
     private var _binding: FragmentInformationBinding? = null
     private val binding get() = _binding!!
 
-    private val homeViewModel by viewModels<HomeViewModel> {
-        ViewModelFactory.getInstance(requireActivity())
-    }
+    private lateinit var homeViewModel:HomeViewModel
 
     @SuppressLint("SetTextI18n")
     override fun onCreateView(
@@ -51,6 +52,12 @@ class InformationFragment : Fragment() {
     ): View {
         _binding = FragmentInformationBinding.inflate(inflater, container, false)
         val view = binding.root
+
+        lifecycleScope.launch{
+            homeViewModel = withContext(Dispatchers.IO){
+                ViewModelFactory.getInstance(requireContext()).create(HomeViewModel::class.java)
+            }
+        }
 
         val cityKey = (requireActivity().application as MyLocation).sharedData
 

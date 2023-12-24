@@ -21,6 +21,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.getValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -46,25 +47,29 @@ class DetailInfoCityActivity : AppCompatActivity() {
         val db = FirebaseDatabase.getInstance("https://wanderwise-application-default-rtdb.asia-southeast1.firebasedatabase.app")
 
         try {
-            lifecycleScope.launch{
-                val citySnapshot = db.getReference("cities/$cityKey").get().await()
+            lifecycleScope.launch(Dispatchers.IO){
+                var citySnapshot = db.getReference("cities/$cityKey").get().await()
 
-                if (citySnapshot.exists()) {
-                    val titleCity = citySnapshot.key.toString()
+                lifecycleScope.launch(Dispatchers.Main) {
+                    if (citySnapshot.exists()) {
+                        val titleCity = citySnapshot.key.toString()
+                        val formattedTitle = getString(R.string.what_is_denpasar_city, titleCity)
+                        binding.titleCity.text = formattedTitle
+                        binding.descriptionSummary.text = citySnapshot.getValue<City>()!!.description.toString()
 
-                    val formattedTitle = getString(R.string.what_is_denpasar_city, titleCity)
-                    binding.titleCity.text = formattedTitle
-                    Glide.with(binding.root)
-                        .load(citySnapshot.getValue<City>()!!.image.toString())
-                        .into(binding.cityPhoto)
-                    binding.descriptionSummary.text = citySnapshot.getValue<City>()!!.description.toString()
+                        Glide.with(binding.root)
+                            .load(citySnapshot.getValue<City>()!!.image.toString())
+                            .into(binding.cityPhoto)
+                    }
+
+                    val pagerAdapter = SectionPagerAdapter(supportFragmentManager)
+                    binding.viewPager.adapter = pagerAdapter
+                    binding.tabs.setupWithViewPager(binding.viewPager)
+                    supportActionBar?.setBackgroundDrawable(ColorDrawable(Color.parseColor("#FFFFFF")))
+                    supportActionBar?.title = "Detail info city"
+
+//                    citySnapshot = null
                 }
-
-                val pagerAdapter = SectionPagerAdapter(supportFragmentManager)
-                binding.viewPager.adapter = pagerAdapter
-                binding.tabs.setupWithViewPager(binding.viewPager)
-                supportActionBar?.setBackgroundDrawable(ColorDrawable(Color.parseColor("#FFFFFF")))
-                supportActionBar?.title = "Detail info city"
             }
         } catch (e: Exception) {
             Log.e("Error", "Failed to fetch data: ${e.message}")
