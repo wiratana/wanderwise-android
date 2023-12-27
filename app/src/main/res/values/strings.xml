@@ -106,4 +106,12 @@
     <string name="title_news_dummy">Peningkatan Tingkat Kriminalitas Membuat Warga Khawatir, Pihak Berwenang siap Mengambil Tindakan!</string>
     <string name="news_dummy_description">Tingkat criminality yang meningkat belakangan ini telah menimbulkan kekhawatiran di kalangan warga setempat. Data terbaru menunjukkan peningkatan signifikan dalam berbagai jenis kejahatan, mulai dari pencurian hingga kekerasan jalanan. Menurut laporan kepolisian, kejahatan jalanan menjadi salah satu perhatian utama, dengan serangkaian insiden yang melibatkan pencurian dan penyerangan. \n\n Peningkatan ini telah menciptakan kekhawatiran akan keamanan warga dan mendorong panggilan untuk langkah-langkah keamanan yang lebih ketat. Pihak berwenang setempat, termasuk kepolisian dan lembaga terkait, telah merespons dengan serius terhadap situasi ini.</string>
     <string name="read_more">Read more!</string>
+    <string name="sexual_violation">Sexual Violation</string>
+    <string name="conflict">Conflict</string>
+    <string name="theft">Theft</string>
+    <string name="homicide">Homicide</string>
+    <string name="accident">Accident</string>
+    <string name="disease">Disease</string>
+    <string name="flood">Flood</string>
+    <string name="landslide">Landslide</string>
 </resources>
